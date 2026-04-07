@@ -443,6 +443,10 @@ def safe_move(source: Path, destination_parent: Path) -> tuple[Path, list[str]]:
         shutil.copytree(source, destination)
     except PermissionError as exc:
         raise PermissionError(f"Permission denied moving to {destination_parent}. Approval required: {sudo_move_approval_command(source, destination_parent)}") from exc
+    except shutil.Error as exc:
+        if any("Operation not permitted" in str(part) or "Permission denied" in str(part) for part in exc.args[0]):
+            raise PermissionError(f"Permission denied moving to {destination_parent}. Approval required: {sudo_move_approval_command(source, destination_parent)}") from exc
+        raise
     actions.append("copied across filesystems")
 
     if not verify_same_tree(source, destination):
