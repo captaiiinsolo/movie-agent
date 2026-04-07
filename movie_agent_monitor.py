@@ -99,13 +99,25 @@ def monitor_once() -> int:
                 item['scan_sent'] = True
                 changed = True
 
-        normalized_dir = Path(item.get('content_path') or '').with_suffix('')
-        if item.get('scan_sent') and not item.get('move_started_sent') and normalized_dir.exists():
+        candidates = []
+        content_path_value = item.get('content_path') or ''
+        if content_path_value:
+            cp = Path(content_path_value)
+            candidates.append(cp.with_suffix(''))
+            stem_title = cp.stem.replace('.', ' ').replace('_', ' ')
+            import re
+            m = re.search(r'(.+?)\s*((19|20)\d{2})', stem_title)
+            if m:
+                candidates.append(Path('/home/santos-family/Downloads') / f"{m.group(1).strip()} ({m.group(2)})")
+                candidates.append(Path('/mnt/th3keyMedia/Movies') / f"{m.group(1).strip()} ({m.group(2)})")
+
+        normalized_dir = next((p for p in candidates if p.exists() and p.is_dir() and str(p).startswith('/home/santos-family/Downloads')), None)
+        if item.get('scan_sent') and not item.get('move_started_sent') and normalized_dir is not None:
             send_message(target, f'Move starting: {normalized_dir.name}')
             item['move_started_sent'] = True
             changed = True
 
-        movies_match = list(Path('/mnt/th3keyMedia/Movies').glob(f"{normalized_dir.name}*")) if normalized_dir.name else []
+        movies_match = [p for p in candidates if p.exists() and p.is_dir() and str(p).startswith('/mnt/th3keyMedia/Movies')]
         if item.get('move_started_sent') and not item.get('move_completed_sent') and movies_match:
             send_message(target, f'Move complete: {movies_match[0].name}')
             item['move_completed_sent'] = True

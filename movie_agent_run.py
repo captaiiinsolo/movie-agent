@@ -99,9 +99,7 @@ def send_telegram_message(target: str | None, message: str) -> None:
 
 
 def maybe_send_progress_update(target: str | None, query: str, percent: int, torrent: dict) -> None:
-    name = torrent.get("name") or query
-    state = torrent.get("state") or "unknown"
-    send_telegram_message(target, f"{name}: {percent}% complete ({state})")
+    return
 
 
 def maybe_send_scan_update(target: str | None, completed_path: Path, clean: bool, stale: bool) -> None:
@@ -231,7 +229,7 @@ def main() -> int:
     response = client.add_torrent_url(target, savepath=config["paths"]["downloads"])
     print("Submission response:", response or "<empty>")
     print(f"Submitted: {selected_name}")
-    send_telegram_message(args.notify_target, f"Download started: {selected_name}")
+    # durable monitor owns user-facing milestone notifications
     duplicate_submission = (response or "").strip().lower() == "fails."
     if duplicate_submission:
         print("qBittorrent reported the torrent may already exist, continuing with tracker lookup.")
@@ -376,7 +374,6 @@ def main() -> int:
         print("Summary: download completed, scanned, normalized, awaiting move approval.")
         return 0
 
-    send_telegram_message(args.notify_target, f"Move starting: {normalized_root.name}")
     try:
         final_path, move_actions = safe_move(normalized_root, Path(config["paths"]["movies_destination"]))
     except PermissionError as exc:
@@ -388,7 +385,6 @@ def main() -> int:
     print(f"Final path: {final_path}")
     print(f"Source exists after move: {normalized_root.exists()}")
     print(f"Destination exists after move: {final_path.exists()}")
-    send_telegram_message(args.notify_target, f"Move complete: {final_path.name}")
     print("Summary: download completed, scanned, normalized, and moved successfully.")
     return 0
 
