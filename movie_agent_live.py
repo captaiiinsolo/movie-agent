@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-from movie_agent_lib import is_addable_target, load_config, run_ranked_search, build_client
+from movie_agent_lib import format_bytes, is_addable_target, load_config, run_ranked_search, build_client
 
 STATE_PATH = Path("/home/santos-family/.openclaw/workspace/movie-agent/state/live_state.json")
 
@@ -32,10 +32,11 @@ def render_options(query: str, ranked: list, limit: int, addable_only: bool) -> 
     for idx, candidate in enumerate(ranked[:limit], start=1):
         raw = candidate.raw
         seeders = raw.get("nbSeeders") or raw.get("nb_seeders") or raw.get("seeders") or 0
+        size = int(raw.get("fileSize") or raw.get("file_size") or 0)
         addable = is_addable_target(raw.get("fileUrl") or raw.get("downloadUrl") or raw.get("magnetUri") or "")
         addable_text = "addable" if addable else "not-addable"
         lines.append(f"{idx}. {raw.get('fileName') or raw.get('name')}")
-        lines.append(f"   seeds: {seeders} | score: {candidate.score:.1f} | {addable_text}")
+        lines.append(f"   size: {format_bytes(size)} | seeds: {seeders} | score: {candidate.score:.1f} | {addable_text}")
         lines.append(f"   why: {', '.join(candidate.reasons[:4])}")
         lines.append("")
     return "\n".join(lines).strip()
