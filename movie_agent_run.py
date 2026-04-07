@@ -6,6 +6,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from movie_agent_monitor import track_torrent
+
 from movie_agent_lib import (
     build_client,
     choose_completed_target,
@@ -241,8 +243,16 @@ def main() -> int:
         new_items = [item for item in current if item.get("hash") not in before_hashes]
         if new_items:
             new_items.sort(key=lambda t: t.get("added_on", 0), reverse=True)
-            torrent_hash = new_items[0].get("hash")
+            tracked_item = new_items[0]
+            torrent_hash = tracked_item.get("hash")
             print(f"Tracked torrent hash: {torrent_hash}")
+            if torrent_hash and args.notify_target:
+                track_torrent(
+                    torrent_hash,
+                    tracked_item.get("name") or selected_name,
+                    args.notify_target,
+                    tracked_item.get("content_path") or tracked_item.get("save_path") or "",
+                )
             break
 
     if torrent_hash is None:
@@ -254,6 +264,14 @@ def main() -> int:
             print(
                 f"  name={item.get('name')} | state={item.get('state')} | "
                 f"progress={float(item.get('progress') or 0):.2%} | added_on={item.get('added_on')}"
+            )
+        fallback_item = select_fallback_torrent(current, before_snapshot, selected_name)
+        if fallback_item is not None and fallback_item.get('hash') and args.notify_target:
+            track_torrent(
+                fallback_item.get('hash'),
+                fallback_item.get('name') or selected_name,
+                args.notify_target,
+                fallback_item.get('content_path') or fallback_item.get('save_path') or '',
             )
 
     completed_path = Path(args.completed_path).expanduser() if args.completed_path else None

@@ -27,10 +27,23 @@ def maybe_register_monitor(query: str, choice: int, notify_target: str) -> None:
     client.login()
     state = load_state()
     selected_name = state.get('selected_name') or query
+    ranked_options = state.get('ranked_options') or []
+    selected_target = state.get('selected_target') or ''
+    selected_hash = None
+    if selected_target.startswith('magnet:?'):
+        import urllib.parse
+        parsed = urllib.parse.parse_qs(urllib.parse.urlparse(selected_target).query)
+        xt_values = parsed.get('xt') or []
+        for xt in xt_values:
+            if xt.lower().startswith('urn:btih:'):
+                selected_hash = xt.split(':')[-1].lower()
+                break
     for item in client.list_torrents('all'):
         name = item.get('name') or ''
-        if selected_name.lower() in name.lower() or name.lower() in selected_name.lower():
-            torrent_hash = item.get('hash')
+        torrent_hash = (item.get('hash') or '').lower()
+        name_match = selected_name.lower() in name.lower() or name.lower() in selected_name.lower()
+        hash_match = bool(selected_hash and torrent_hash == selected_hash)
+        if name_match or hash_match:
             if torrent_hash:
                 subprocess.run(
                     [
