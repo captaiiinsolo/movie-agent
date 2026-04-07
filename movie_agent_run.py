@@ -164,11 +164,13 @@ def main() -> int:
     if not args.approve_download:
         print("Download approval not provided.")
         print("Preview complete. Re-run with --approve-download to submit to qBittorrent.")
+        print("Summary: search complete, awaiting download approval.")
         return 0
 
     if not target or not is_addable_target(target):
         print("Selected result does not expose a directly addable magnet or .torrent URL.")
         print(f"Target seen: {target or '<none>'}")
+        print("Summary: selected result is not safely addable.")
         return 1
 
     before_torrents = client.list_torrents("all")
@@ -211,6 +213,7 @@ def main() -> int:
             print("Cannot use --wait on this setup right now: qBittorrent Web API torrent listing is returning zero torrents.")
             print("Search/add endpoints work, but /api/v2/torrents/info and /api/v2/sync/maindata are not exposing active torrents to the script.")
             print("Use --completed-path for postprocess, or fix qBittorrent's torrent-list API visibility before using --wait.")
+            print("Summary: download submitted, but wait/monitoring unavailable on this setup.")
             return 4
         completed_path, completed_torrent = monitor_for_completion(
             client,
@@ -238,12 +241,14 @@ def main() -> int:
 
     if not clean:
         print(scan_log)
+        print("Summary: scan failed, no move performed.")
         return 1
 
     if stale and not args.allow_stale_db and not args.update_definitions:
         print(scan_log)
         print("ClamAV database appears stale.")
         print(f"Approval required to continue: {freshclam_approval_command()}")
+        print("Summary: download completed and scanned, waiting on freshclam approval before postprocess/move.")
         return 2
 
     if stale and args.update_definitions:
@@ -278,16 +283,19 @@ def main() -> int:
     if not args.approve_move:
         print("Move approval not provided.")
         print(f"Preview complete. Normalized path: {normalized_root}")
+        print("Summary: download completed, scanned, normalized, awaiting move approval.")
         return 0
 
     try:
         final_path, move_actions = safe_move(normalized_root, Path(config["paths"]["movies_destination"]))
     except PermissionError as exc:
         print(str(exc))
+        print("Summary: download completed, scanned, normalized, move blocked pending elevated approval.")
         return 4
     for action in move_actions:
         print(f"Move: {action}")
     print(f"Final path: {final_path}")
+    print("Summary: download completed, scanned, normalized, and moved successfully.")
     return 0
 
 

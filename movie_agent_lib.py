@@ -25,6 +25,11 @@ JUNK_TEXT_FILENAMES = {
     "torrent downloaded from uindex.org.txt",
     "downloaded from uindex.org.txt",
 }
+JUNK_IMAGE_FILENAMES = {
+    "www.yify-torrents.com.jpg",
+    "www.yts.mx.jpg",
+    "yts.mx.jpg",
+}
 
 
 @dataclass
@@ -374,6 +379,15 @@ def remove_junk_txt_files(root: Path) -> list[Path]:
     return removed
 
 
+def remove_junk_image_files(root: Path) -> list[Path]:
+    removed: list[Path] = []
+    for path in root.rglob("*"):
+        if path.is_file() and path.name.lower().strip() in JUNK_IMAGE_FILENAMES:
+            path.unlink(missing_ok=True)
+            removed.append(path)
+    return removed
+
+
 def normalize_movie_folder(source: Path, keep_nfo: bool = True, remove_junk_txt: bool = True) -> tuple[Path, list[str]]:
     actions: list[str] = []
     work_root = source
@@ -382,6 +396,10 @@ def normalize_movie_folder(source: Path, keep_nfo: bool = True, remove_junk_txt:
         removed = remove_junk_txt_files(work_root)
         if removed:
             actions.append(f"removed {len(removed)} junk txt file(s)")
+
+    removed_images = remove_junk_image_files(work_root)
+    if removed_images:
+        actions.append(f"removed {len(removed_images)} junk image file(s)")
 
     video = find_video_file(work_root)
     if video is None:
