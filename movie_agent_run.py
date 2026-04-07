@@ -55,21 +55,22 @@ def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, na
         if torrent is None:
             candidates = []
             lowered_hint = (name_hint or "").lower()
-            hint_tokens = [token for token in lowered_hint.replace('.', ' ').replace('-', ' ').split() if token]
+            hint_tokens = [token for token in lowered_hint.replace('.', ' ').replace('-', ' ').replace('_', ' ').split() if token]
             for item in torrents:
                 name = (item.get("name") or "")
                 lowered_name = name.lower()
-                if hint_tokens and not all(token in lowered_name for token in hint_tokens[:2]):
+                token_matches = sum(1 for token in hint_tokens if token in lowered_name)
+                if hint_tokens and token_matches < min(3, len(hint_tokens)):
                     continue
-                candidates.append(item)
-            candidates.sort(key=lambda t: t.get("added_on", 0), reverse=True)
-            torrent = candidates[0] if candidates else None
+                candidates.append((token_matches, item))
+            candidates.sort(key=lambda pair: (pair[0], pair[1].get("added_on", 0)), reverse=True)
+            torrent = candidates[0][1] if candidates else None
 
         if torrent is not None:
             state = torrent.get("state")
             progress = float(torrent.get("progress", 0))
             if state != last_state:
-                print(f"Torrent state: {state}, progress={progress:.2%}")
+                print(f"Torrent state: {state}, progress={progress:.2%}, name={torrent.get('name')}")
                 last_state = state
             if progress >= 1.0 or state in {"uploading", "stalledUP", "queuedUP", "forcedUP"}:
                 return choose_completed_target(downloads, name_hint=name_hint)
@@ -136,6 +137,9 @@ def main() -> int:
             torrent_hash = new_items[0].get("hash")
             print(f"Tracked torrent hash: {torrent_hash}")
             break
+
+    if torrent_hash is None:
+        print("No new torrent hash detected after submission, falling back to name-based tracking.")
 
     completed_path = Path(args.completed_path).expanduser() if args.completed_path else None
     if completed_path is None:
