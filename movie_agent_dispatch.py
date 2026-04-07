@@ -88,6 +88,7 @@ def dispatch_message(message: str, approve_download: bool = False, wait: bool = 
             "--limit",
             str(max(len(state.get("options") or []), 5)),
             "--approve-download",
+            "--approve-move",
         ]
         if wait:
             cmd.append("--wait")
