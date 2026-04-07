@@ -100,7 +100,7 @@ def main() -> int:
     target = raw.get("fileUrl") or raw.get("descrLink")
     selected_name = raw.get("fileName") or raw.get("name") or raw.get("descrLink") or "selected release"
 
-    if not args.approve-download:
+    if not args.approve_download:
         print("Download approval not provided.")
         print("Preview complete. Re-run with --approve-download to submit to qBittorrent.")
         return 0
