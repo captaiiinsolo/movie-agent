@@ -5,7 +5,13 @@ import argparse
 import json
 from pathlib import Path
 
-from movie_agent_lib import format_bytes, is_addable_target, load_config, run_ranked_search, build_client
+from movie_agent_lib import (
+    build_client,
+    format_bytes,
+    is_addable_target,
+    load_config,
+    run_ranked_search,
+)
 
 STATE_PATH = Path("/home/santos-family/.openclaw/workspace/movie-agent/state/live_state.json")
 
@@ -94,10 +100,22 @@ def main() -> int:
         )
         using_addable = bool(addable)
         ranked = addable if addable else rejected
+        limited = ranked[: args.limit]
         state = {
             "query": args.query,
             "results_seen": payload.get("total", 0),
-            "options": [candidate.raw for candidate in ranked[: args.limit]],
+            "options": [candidate.raw for candidate in limited],
+            "ranked_options": [
+                {
+                    "rank": idx,
+                    "name": candidate.raw.get("fileName") or candidate.raw.get("name"),
+                    "score": candidate.score,
+                    "reasons": candidate.reasons,
+                    "target": candidate.raw.get("fileUrl") or candidate.raw.get("downloadUrl") or candidate.raw.get("magnetUri") or "",
+                    "raw": candidate.raw,
+                }
+                for idx, candidate in enumerate(limited, start=1)
+            ],
             "addable_results_found": len(addable),
         }
         save_state(state)
@@ -114,10 +132,19 @@ def main() -> int:
             print(f"Choice out of range. Available: 1-{len(options)}")
             return 1
         selected = options[idx]
+        ranked_options = state.get("ranked_options") or []
+        selected_ranked = ranked_options[idx] if idx < len(ranked_options) else None
         state["selected_choice"] = args.choice
         state["selected_name"] = selected.get("fileName") or selected.get("name")
+        state["selected_target"] = (
+            selected.get("fileUrl") or selected.get("downloadUrl") or selected.get("magnetUri") or ""
+        )
+        if selected_ranked is not None:
+            state["selected_score"] = selected_ranked.get("score")
+            state["selected_reasons"] = selected_ranked.get("reasons")
         save_state(state)
         print(f"Selected option {args.choice}: {state['selected_name']}")
+        print("Selection is now pinned to this exact result.")
         print("Reply yes to download, or search again.")
         return 0
 
