@@ -38,7 +38,7 @@ def print_candidates(query: str, total: int, ranked, choice: int) -> None:
         print()
 
 
-def select_fallback_torrent(current_torrents, before_snapshot, name_hint: str | None):
+def select_fallback_torrent(current_torrents, before_snapshot, name_hint: str | None, debug: bool = False):
     lowered_hint = (name_hint or "").lower()
     hint_tokens = [token for token in lowered_hint.replace('.', ' ').replace('-', ' ').replace('_', ' ').split() if token]
     scored = []
@@ -66,6 +66,17 @@ def select_fallback_torrent(current_torrents, before_snapshot, name_hint: str | 
         scored.append((score, item))
 
     scored.sort(key=lambda pair: (pair[0], pair[1].get("added_on", 0)), reverse=True)
+    if debug:
+        print("Fallback candidates:")
+        for score, item in scored[:5]:
+            item_hash = item.get("hash")
+            before = before_snapshot.get(item_hash, {})
+            print(
+                f"  score={score} | name={item.get('name')} | state={item.get('state')} | "
+                f"progress={float(item.get('progress') or 0):.2%} | "
+                f"added_on={item.get('added_on')} | before_added_on={before.get('added_on')} | "
+                f"before_progress={float(before.get('progress') or 0):.2%}"
+            )
     return scored[0][1] if scored and scored[0][0] > 0 else None
 
 
@@ -84,7 +95,7 @@ def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, na
                     break
 
         if torrent is None:
-            torrent = select_fallback_torrent(torrents, before_snapshot, name_hint)
+            torrent = select_fallback_torrent(torrents, before_snapshot, name_hint, debug=(last_state is None))
 
         if torrent is not None:
             state = torrent.get("state")
