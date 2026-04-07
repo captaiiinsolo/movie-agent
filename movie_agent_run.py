@@ -187,6 +187,12 @@ def main() -> int:
         if not args.wait:
             print("Submission complete. Re-run later with --wait or provide --completed-path for postprocess.")
             return 0
+        visible_torrents = client.list_torrents("all")
+        if not visible_torrents:
+            print("Cannot use --wait on this setup right now: qBittorrent Web API torrent listing is returning zero torrents.")
+            print("Search/add endpoints work, but /api/v2/torrents/info and /api/v2/sync/maindata are not exposing active torrents to the script.")
+            print("Use --completed-path for postprocess, or fix qBittorrent's torrent-list API visibility before using --wait.")
+            return 4
         completed_path = monitor_for_completion(
             client,
             Path(config["paths"]["downloads"]),
