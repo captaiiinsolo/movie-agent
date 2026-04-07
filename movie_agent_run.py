@@ -38,7 +38,38 @@ def print_candidates(query: str, total: int, ranked, choice: int) -> None:
         print()
 
 
-def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, name_hint: str | None, timeout_seconds: int, poll_seconds: int) -> Path:
+def select_fallback_torrent(current_torrents, before_snapshot, name_hint: str | None):
+    lowered_hint = (name_hint or "").lower()
+    hint_tokens = [token for token in lowered_hint.replace('.', ' ').replace('-', ' ').replace('_', ' ').split() if token]
+    scored = []
+
+    for item in current_torrents:
+        item_hash = item.get("hash")
+        name = (item.get("name") or "")
+        lowered_name = name.lower()
+        token_matches = sum(1 for token in hint_tokens if token in lowered_name)
+
+        before = before_snapshot.get(item_hash, {})
+        added_on = int(item.get("added_on") or 0)
+        progress = float(item.get("progress") or 0)
+        before_progress = float(before.get("progress") or 0)
+        progress_delta = progress - before_progress
+        added_delta = added_on - int(before.get("added_on") or 0)
+
+        score = 0
+        score += token_matches * 20
+        score += 15 if added_delta > 0 else 0
+        score += 20 if progress_delta > 0 else 0
+        score += 10 if progress > 0 else 0
+        score += min(10, max(0, int(progress * 10)))
+        score += min(10, max(0, int((time.time() - added_on) * -1 / 60))) if added_on else 0
+        scored.append((score, item))
+
+    scored.sort(key=lambda pair: (pair[0], pair[1].get("added_on", 0)), reverse=True)
+    return scored[0][1] if scored and scored[0][0] > 0 else None
+
+
+def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, name_hint: str | None, timeout_seconds: int, poll_seconds: int, before_snapshot: dict[str, dict]) -> Path:
     deadline = time.time() + timeout_seconds
     last_state = None
 
@@ -53,18 +84,7 @@ def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, na
                     break
 
         if torrent is None:
-            candidates = []
-            lowered_hint = (name_hint or "").lower()
-            hint_tokens = [token for token in lowered_hint.replace('.', ' ').replace('-', ' ').replace('_', ' ').split() if token]
-            for item in torrents:
-                name = (item.get("name") or "")
-                lowered_name = name.lower()
-                token_matches = sum(1 for token in hint_tokens if token in lowered_name)
-                if hint_tokens and token_matches < min(3, len(hint_tokens)):
-                    continue
-                candidates.append((token_matches, item))
-            candidates.sort(key=lambda pair: (pair[0], pair[1].get("added_on", 0)), reverse=True)
-            torrent = candidates[0][1] if candidates else None
+            torrent = select_fallback_torrent(torrents, before_snapshot, name_hint)
 
         if torrent is not None:
             state = torrent.get("state")
@@ -122,7 +142,9 @@ def main() -> int:
         print("Selected result does not expose a usable download or magnet URL.")
         return 1
 
-    before_hashes = {item.get("hash") for item in client.list_torrents("all")}
+    before_torrents = client.list_torrents("all")
+    before_hashes = {item.get("hash") for item in before_torrents}
+    before_snapshot = {item.get("hash"): item for item in before_torrents if item.get("hash")}
     response = client.add_torrent_url(target, savepath=config["paths"]["downloads"])
     print("Submission response:", response or "<empty>")
     print(f"Submitted: {selected_name}")
@@ -153,6 +175,7 @@ def main() -> int:
             name_hint=selected_name,
             timeout_seconds=args.timeout,
             poll_seconds=args.poll,
+            before_snapshot=before_snapshot,
         )
 
     print(f"Completed target: {completed_path}")
