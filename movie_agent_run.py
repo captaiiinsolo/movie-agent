@@ -363,6 +363,8 @@ def main() -> int:
     for action in move_actions:
         print(f"Move: {action}")
     print(f"Final path: {final_path}")
+    print(f"Source exists after move: {normalized_root.exists()}")
+    print(f"Destination exists after move: {final_path.exists()}")
     print("Summary: download completed, scanned, normalized, and moved successfully.")
     return 0
 
