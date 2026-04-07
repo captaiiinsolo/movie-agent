@@ -57,7 +57,7 @@ class QBittorrentClient:
         if result != "Ok.":
             raise RuntimeError(f"qBittorrent login failed: {result}")
 
-    def start_search(self, pattern: str, category: str = "movies", plugins: str = "enabled") -> int:
+    def start_search(self, pattern: str, category: str = "all", plugins: str = "enabled") -> int:
         payload = json.loads(self.post("/api/v2/search/start", {
             "pattern": pattern,
             "category": category,
@@ -204,7 +204,22 @@ def score_candidate(result: dict[str, Any], config: dict[str, Any], title: str, 
         score -= 10
         reasons.append("poor seed/leech ratio")
 
-    if any(reject.replace("_", " ") in lower for reject in filters):
+    reject_tokens = {
+        "cam": [" cam ", ".cam.", "-cam", "camrip"],
+        "ts": [" telesync ", " hdts ", ".ts.", "-ts-"],
+        "telesync": ["telesync", "tele sync"],
+        "screener": ["screener", "dvdscr"],
+        "passworded_archive": ["password", ".rar", ".zip"],
+        "tracker_spam": ["www.", "torrentgalaxy.to", "ettv", "torrent downloaded from"],
+        "ambiguous_match": [],
+    }
+    matched_reject = False
+    for reject in filters:
+        patterns = reject_tokens.get(reject, [])
+        if any(pattern in lower for pattern in patterns):
+            matched_reject = True
+            break
+    if matched_reject:
         score -= 80
         reasons.append("matched reject filter")
 
