@@ -497,7 +497,7 @@ def safe_move(source: Path, destination_parent: Path) -> tuple[Path, list[str]]:
         return destination, actions
 
     try:
-        shutil.copytree(source, destination)
+        shutil.copytree(source, destination, copy_function=shutil.copyfile)
     except PermissionError as exc:
         raise PermissionError(f"Permission denied moving to {destination_parent}. Approval required: {sudo_move_approval_command(source, destination_parent)}") from exc
     except shutil.Error as exc:
