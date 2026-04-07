@@ -25,6 +25,8 @@ JUNK_TEXT_FILENAMES = {
     "torrent downloaded from uindex.org.txt",
     "downloaded from uindex.org.txt",
     "torrent downloaded from torrenting.com.txt",
+    "downloaded from publichd.se.txt",
+    "downloaded from publichd.txt",
 }
 JUNK_IMAGE_FILENAMES = {
     "www.yify-torrents.com.jpg",
@@ -392,7 +394,8 @@ def run_freshclam_with_sudo() -> tuple[int, str, str]:
 def remove_junk_txt_files(root: Path) -> list[Path]:
     removed: list[Path] = []
     for path in root.rglob("*.txt"):
-        if path.name.lower().strip() in JUNK_TEXT_FILENAMES:
+        lowered = path.name.lower().strip()
+        if lowered in JUNK_TEXT_FILENAMES or lowered.startswith("downloaded from "):
             path.unlink(missing_ok=True)
             removed.append(path)
     return removed
