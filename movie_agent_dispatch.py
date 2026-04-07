@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 from pathlib import Path
 
@@ -11,12 +12,39 @@ from movie_agent_live import load_state, save_state
 YES_WORDS = {"yes", "y", "download", "download it", "go ahead", "do it", "approve"}
 CLEAR_WORDS = {"clear", "cancel", "stop", "nevermind", "never mind"}
 RUN_PATH = Path("/home/santos-family/.openclaw/workspace/movie-agent/movie_agent_run.py")
+MONITOR_PATH = Path("/home/santos-family/.openclaw/workspace/movie-agent/movie_agent_monitor.py")
 DEFAULT_NOTIFY_TARGET = "7976063340"
 
 
 def run_command(cmd: list[str]) -> int:
     proc = subprocess.run(cmd, text=True)
     return proc.returncode
+
+
+def maybe_register_monitor(query: str, choice: int, notify_target: str) -> None:
+    config = load_config()
+    client = build_client(config)
+    client.login()
+    state = load_state()
+    selected_name = state.get('selected_name') or query
+    for item in client.list_torrents('all'):
+        name = item.get('name') or ''
+        if selected_name.lower() in name.lower() or name.lower() in selected_name.lower():
+            torrent_hash = item.get('hash')
+            if torrent_hash:
+                subprocess.run(
+                    [
+                        'python3', str(MONITOR_PATH), 'track',
+                        '--hash', torrent_hash,
+                        '--name', name,
+                        '--notify-target', notify_target,
+                        '--content-path', item.get('content_path') or '',
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                break
 
 
 def dispatch_message(message: str, approve_download: bool = False, wait: bool = True, timeout: int = 7200, poll: int = 10) -> int:
@@ -95,7 +123,9 @@ def dispatch_message(message: str, approve_download: bool = False, wait: bool = 
             cmd.append("--wait")
             cmd.extend(["--timeout", str(timeout), "--poll", str(poll)])
         cmd.extend(["--notify-target", DEFAULT_NOTIFY_TARGET])
-        return run_command(cmd)
+        code = run_command(cmd)
+        maybe_register_monitor(query, int(choice), DEFAULT_NOTIFY_TARGET)
+        return code
 
     config = load_config()
     client = build_client(config)
