@@ -469,6 +469,18 @@ def verify_same_tree(src: Path, dst: Path) -> bool:
     return src_files == dst_files
 
 
+def copy_tree_contents(src: Path, dst: Path) -> None:
+    dst.mkdir(parents=True, exist_ok=True)
+    for path in sorted(src.rglob('*')):
+        rel = path.relative_to(src)
+        target = dst / rel
+        if path.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+        elif path.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, target)
+
+
 def sudo_move_approval_command(source: Path, destination_parent: Path) -> str:
     destination = destination_parent / source.name
     src = str(source)
@@ -477,16 +489,25 @@ def sudo_move_approval_command(source: Path, destination_parent: Path) -> str:
     dst_q = shlex.quote(dst)
     return (
         f"sudo mkdir -p {dst_q} && "
-        f"sudo cp -r {src_q}/. {dst_q}/ && "
-        f"sudo chown -R jellyfin:jellyfin {dst_q} && "
         "python3 - <<'PY'\n"
         "from pathlib import Path\n"
+        "import shutil\n"
         f"src = Path({src!r})\n"
         f"dst = Path({dst!r})\n"
+        "dst.mkdir(parents=True, exist_ok=True)\n"
+        "for path in sorted(src.rglob('*')):\n"
+        "    rel = path.relative_to(src)\n"
+        "    target = dst / rel\n"
+        "    if path.is_dir():\n"
+        "        target.mkdir(parents=True, exist_ok=True)\n"
+        "    elif path.is_file():\n"
+        "        target.parent.mkdir(parents=True, exist_ok=True)\n"
+        "        shutil.copyfile(path, target)\n"
         "src_files = sorted(str(p.relative_to(src)) for p in src.rglob('*') if p.is_file())\n"
         "dst_files = sorted(str(p.relative_to(dst)) for p in dst.rglob('*') if p.is_file())\n"
         "print('MATCH' if src_files == dst_files else 'MISMATCH')\n"
         "PY\n"
+        f"&& sudo chown -R jellyfin:jellyfin {dst_q} "
         f"&& sudo rm -r {src_q}"
     )
 
@@ -510,7 +531,7 @@ def safe_move(source: Path, destination_parent: Path) -> tuple[Path, list[str]]:
         return destination, actions
 
     try:
-        shutil.copytree(source, destination, copy_function=shutil.copyfile)
+        copy_tree_contents(source, destination)
     except PermissionError as exc:
         raise PermissionError(f"Permission denied moving to {destination_parent}. Approval required: {sudo_move_approval_command(source, destination_parent)}") from exc
     except shutil.Error as exc:
