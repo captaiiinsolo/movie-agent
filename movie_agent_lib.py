@@ -126,6 +126,11 @@ def title_year_match_score(name: str, title: str, year: int | None) -> tuple[flo
     return score, reasons
 
 
+def is_addable_target(url: str) -> bool:
+    lowered = (url or "").lower().strip()
+    return lowered.startswith("magnet:?") or lowered.endswith(".torrent")
+
+
 def score_candidate(result: dict[str, Any], config: dict[str, Any], title: str, year: int | None) -> Candidate:
     prefs = config["preferences"]
     filters = config["filters"]["reject"]
@@ -234,6 +239,14 @@ def score_candidate(result: dict[str, Any], config: dict[str, Any], title: str, 
     if matched_reject:
         score -= 80
         reasons.append("matched reject filter")
+
+    target_url = result.get("fileUrl") or result.get("downloadUrl") or result.get("magnetUri") or ""
+    if is_addable_target(target_url):
+        score += 12
+        reasons.append("directly addable target")
+    else:
+        score -= 60
+        reasons.append("not directly addable")
 
     if site_url:
         reasons.append("source available")

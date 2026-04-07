@@ -12,6 +12,7 @@ from movie_agent_lib import (
     find_video_file,
     format_bytes,
     freshclam_approval_command,
+    is_addable_target,
     load_config,
     normalize_movie_folder,
     run_freshclam_with_sudo,
@@ -149,8 +150,9 @@ def main() -> int:
         print("Preview complete. Re-run with --approve-download to submit to qBittorrent.")
         return 0
 
-    if not target:
-        print("Selected result does not expose a usable download or magnet URL.")
+    if not target or not is_addable_target(target):
+        print("Selected result does not expose a directly addable magnet or .torrent URL.")
+        print(f"Target seen: {target or '<none>'}")
         return 1
 
     before_torrents = client.list_torrents("all")
