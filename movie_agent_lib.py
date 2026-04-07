@@ -27,6 +27,10 @@ JUNK_TEXT_FILENAMES = {
     "torrent downloaded from torrenting.com.txt",
     "downloaded from publichd.se.txt",
     "downloaded from publichd.txt",
+    "yifystatus.com.txt",
+    "ahashare.com.txt",
+    "torrent downloaded from extratorrent.com.txt",
+    "torrent downloaded from demonoid.com - copy.txt",
 }
 JUNK_IMAGE_FILENAMES = {
     "www.yify-torrents.com.jpg",
