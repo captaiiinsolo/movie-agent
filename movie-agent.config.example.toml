@@ -1,0 +1,62 @@
+# Movie agent local config template
+# Copy to a private local config/secrets file before real use.
+# Do not commit your real password.
+
+[qbittorrent]
+host = "127.0.0.1"
+port = 8090
+username = "th3KeyMedia"
+password = ""
+use_https = false
+
+[paths]
+downloads = "/home/santos-family/Downloads"
+movies_destination = "/mnt/th3keyMedia/Movies"
+
+[scan]
+enabled = true
+scanner = "clamscan"
+updater = "freshclam"
+require_clean_result_before_move = true
+allow_sudo_freshclam_with_approval = true
+
+[workflow]
+mode = "option_a"
+always_require_download_approval = true
+auto_postprocess_after_approval = true
+ask_on_ambiguous_match = true
+
+[preferences]
+preferred_resolution = "1080p"
+allow_720p_fallback = true
+allow_4k_only_with_explicit_approval = true
+preferred_video_codec = "x264"
+allow_x265 = true
+avoid_av1 = true
+prefer_efficient_releases = true
+avoid_absurd_sizes = true
+prefer_best_audio = true
+avoid_dual_audio = true
+avoid_foreign_dub_unless_requested = true
+subtitles = "english_only"
+preferred_groups = ["YIFY", "BONES"]
+
+[filters]
+reject = [
+  "cam",
+  "ts",
+  "telesync",
+  "screener",
+  "passworded_archive",
+  "tracker_spam",
+  "ambiguous_match"
+]
+
+[postprocess]
+strip_tracker_junk = true
+keep_nfo = true
+remove_junk_txt = true
+normalize_folder_name = true
+normalize_file_name = true
+folder_format = "{title} ({year})"
+file_format = "{title} ({year})"
