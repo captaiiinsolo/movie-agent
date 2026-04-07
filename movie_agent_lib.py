@@ -315,9 +315,10 @@ def find_video_file(root: Path) -> Path | None:
 
 
 def infer_title_year(name: str) -> tuple[str, str | None]:
-    match = re.search(r"(.+?)\b((?:19|20)\d{2})\b", name)
+    match = re.search(r"(.+?)\s*\(?((?:19|20)\d{2})\)?\b", name)
     if match:
-        title = sanitize_name(match.group(1))
+        raw_title = match.group(1)
+        title = sanitize_name(re.sub(r"[\[(\s]+$", "", raw_title))
         year = match.group(2)
         return title, year
     return sanitize_name(name), None
