@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 import time
 import urllib.parse
 import urllib.request
@@ -13,7 +15,14 @@ from typing import Any
 
 import tomllib
 
-CONFIG_PATH = Path("/home/santos-family/.openclaw/workspace/movie-agent.config.toml")
+PRIMARY_CONFIG_PATH = Path("/home/santos-family/.openclaw/workspace/movie-agent/movie-agent.config.toml")
+FALLBACK_CONFIG_PATH = Path("/home/santos-family/.openclaw/workspace/movie-agent.config.toml")
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".m4v"}
+JUNK_TEXT_FILENAMES = {
+    "torrent downloaded from uindex.org .txt",
+    "torrent downloaded from uindex.org.txt",
+    "downloaded from uindex.org.txt",
+}
 
 
 @dataclass
@@ -67,9 +76,13 @@ class QBittorrentClient:
             payload["savepath"] = savepath
         return self.post("/api/v2/torrents/add", payload).strip()
 
+    def list_torrents(self, filter_expr: str = "all") -> list[dict[str, Any]]:
+        return self.get_json(f"/api/v2/torrents/info?filter={filter_expr}")
+
 
 def load_config() -> dict[str, Any]:
-    return tomllib.loads(CONFIG_PATH.read_text())
+    config_path = PRIMARY_CONFIG_PATH if PRIMARY_CONFIG_PATH.exists() else FALLBACK_CONFIG_PATH
+    return tomllib.loads(config_path.read_text())
 
 
 def build_client(config: dict[str, Any]) -> QBittorrentClient:
@@ -235,3 +248,153 @@ def format_bytes(size_bytes: int) -> str:
             return f"{size:.1f}{unit}"
         size /= 1024
     return f"{size_bytes}B"
+
+
+def sanitize_name(name: str) -> str:
+    cleaned = name
+    for token in ["www.UIndex.org", "UIndex.org", "YTS.MX", "YIFY", "[YTS.MX]", "[YTS]", " - "]:
+        cleaned = cleaned.replace(token, " ")
+    cleaned = " ".join(cleaned.split())
+    return cleaned.strip(" -._")
+
+
+def find_video_file(root: Path) -> Path | None:
+    if root.is_file() and root.suffix.lower() in VIDEO_EXTENSIONS:
+        return root
+    for path in root.rglob("*"):
+        if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS:
+            return path
+    return None
+
+
+def infer_title_year(name: str) -> tuple[str, str | None]:
+    match = re.search(r"(.+?)\b((?:19|20)\d{2})\b", name)
+    if match:
+        title = sanitize_name(match.group(1))
+        year = match.group(2)
+        return title, year
+    return sanitize_name(name), None
+
+
+def run_command(cmd: list[str]) -> tuple[int, str, str]:
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def clam_db_is_stale(stderr: str, stdout: str) -> bool:
+    text = f"{stdout}\n{stderr}".lower()
+    return "outdated" in text or "update now" in text or "is older than" in text
+
+
+def scan_path(target: Path) -> tuple[bool, bool, str]:
+    code, stdout, stderr = run_command(["clamscan", "-r", str(target)])
+    stale = clam_db_is_stale(stderr, stdout)
+    clean = code == 0
+    return clean, stale, f"STDOUT:\n{stdout}\nSTDERR:\n{stderr}".strip()
+
+
+def latest_db_mtime() -> float | None:
+    db_dir = Path("/var/lib/clamav")
+    candidates = list(db_dir.glob("*.cvd")) + list(db_dir.glob("*.cld"))
+    if not candidates:
+        return None
+    return max(path.stat().st_mtime for path in candidates)
+
+
+def db_older_than_days(days: int) -> bool:
+    mtime = latest_db_mtime()
+    if mtime is None:
+        return True
+    return (time.time() - mtime) > days * 86400
+
+
+def remove_junk_txt_files(root: Path) -> list[Path]:
+    removed: list[Path] = []
+    for path in root.rglob("*.txt"):
+        if path.name.lower().strip() in JUNK_TEXT_FILENAMES:
+            path.unlink(missing_ok=True)
+            removed.append(path)
+    return removed
+
+
+def normalize_movie_folder(source: Path, keep_nfo: bool = True, remove_junk_txt: bool = True) -> tuple[Path, list[str]]:
+    actions: list[str] = []
+    work_root = source
+
+    if remove_junk_txt:
+        removed = remove_junk_txt_files(work_root)
+        if removed:
+            actions.append(f"removed {len(removed)} junk txt file(s)")
+
+    video = find_video_file(work_root)
+    if video is None:
+        raise RuntimeError("No video file found in completed download")
+
+    title, year = infer_title_year(video.stem if video.is_file() else work_root.name)
+    folder_name = f"{title} ({year})" if year else title
+    file_name = f"{title} ({year}){video.suffix.lower()}" if year else f"{title}{video.suffix.lower()}"
+
+    normalized_root = work_root.parent / folder_name
+    if work_root != normalized_root:
+        work_root.rename(normalized_root)
+        actions.append(f"renamed folder to {normalized_root.name}")
+        work_root = normalized_root
+        video = find_video_file(work_root)
+        if video is None:
+            raise RuntimeError("Video file missing after folder rename")
+
+    desired_video = video.with_name(file_name)
+    if video != desired_video:
+        video.rename(desired_video)
+        actions.append(f"renamed video to {desired_video.name}")
+
+    if not keep_nfo:
+        for nfo in work_root.rglob("*.nfo"):
+            nfo.unlink(missing_ok=True)
+            actions.append(f"removed nfo {nfo.name}")
+
+    return work_root, actions
+
+
+def verify_same_tree(src: Path, dst: Path) -> bool:
+    src_files = sorted(str(p.relative_to(src)) for p in src.rglob("*") if p.is_file())
+    dst_files = sorted(str(p.relative_to(dst)) for p in dst.rglob("*") if p.is_file())
+    return src_files == dst_files
+
+
+def safe_move(source: Path, destination_parent: Path) -> tuple[Path, list[str]]:
+    actions: list[str] = []
+    destination = destination_parent / source.name
+
+    if destination.exists():
+        raise RuntimeError(f"Destination already exists: {destination}")
+
+    same_device = source.stat().st_dev == destination_parent.stat().st_dev
+    if same_device:
+        source.rename(destination)
+        actions.append("moved on same filesystem")
+        return destination, actions
+
+    shutil.copytree(source, destination)
+    actions.append("copied across filesystems")
+
+    if not verify_same_tree(source, destination):
+        raise RuntimeError("Destination verification failed after cross-filesystem copy")
+
+    shutil.rmtree(source)
+    actions.append("removed original after verification")
+    return destination, actions
+
+
+def choose_completed_target(downloads: Path, name_hint: str | None = None) -> Path:
+    candidates = []
+    for path in downloads.iterdir():
+        if name_hint and name_hint.lower() not in path.name.lower():
+            continue
+        candidates.append(path)
+
+    if not candidates:
+        raise RuntimeError("No matching download target found")
+
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
