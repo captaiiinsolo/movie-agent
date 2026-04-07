@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-from movie_agent_lib import is_addable_target, load_config, run_ranked_search, build_client, summarize_candidate
+from movie_agent_lib import is_addable_target, load_config, run_ranked_search, build_client
 
 STATE_PATH = Path("/home/santos-family/.openclaw/workspace/movie-agent/state/live_state.json")
 
@@ -21,8 +21,14 @@ def save_state(state: dict) -> None:
     STATE_PATH.write_text(json.dumps(state, indent=2))
 
 
-def render_options(query: str, ranked: list, limit: int) -> str:
-    lines = [f"Results for: {query}", "Reply with a number to choose one.", ""]
+def render_options(query: str, ranked: list, limit: int, addable_only: bool) -> str:
+    lines = [f"Results for: {query}"]
+    if addable_only:
+        lines.append("Reply with a number to choose one.")
+    else:
+        lines.append("No directly addable results were found in the current search set. These are fallback results only.")
+        lines.append("You can still pick one, but it may fail to add cleanly.")
+    lines.append("")
     for idx, candidate in enumerate(ranked[:limit], start=1):
         raw = candidate.raw
         seeders = raw.get("nbSeeders") or raw.get("nb_seeders") or raw.get("seeders") or 0
@@ -61,22 +67,39 @@ def main() -> int:
         client = build_client(config)
         client.login()
         payload, ranked = run_ranked_search(client, config, args.query, limit=100)
-        ranked = sorted(
-            ranked,
+        addable = [
+            c for c in ranked
+            if is_addable_target(c.raw.get("fileUrl") or c.raw.get("downloadUrl") or c.raw.get("magnetUri") or "")
+        ]
+        rejected = [
+            c for c in ranked
+            if not is_addable_target(c.raw.get("fileUrl") or c.raw.get("downloadUrl") or c.raw.get("magnetUri") or "")
+        ]
+        addable = sorted(
+            addable,
             key=lambda c: (
-                1 if is_addable_target(c.raw.get("fileUrl") or c.raw.get("downloadUrl") or c.raw.get("magnetUri") or "") else 0,
+                c.score,
+                int(c.raw.get("nbSeeders") or c.raw.get("nb_seeders") or c.raw.get("seeders") or 0),
+            ),
+            reverse=True,
+        )
+        rejected = sorted(
+            rejected,
+            key=lambda c: (
                 int(c.raw.get("nbSeeders") or c.raw.get("nb_seeders") or c.raw.get("seeders") or 0),
                 c.score,
             ),
             reverse=True,
         )
+        using_addable = bool(addable)
+        ranked = addable if addable else rejected
         state = {
             "query": args.query,
             "results_seen": payload.get("total", 0),
             "options": [candidate.raw for candidate in ranked[: args.limit]],
         }
         save_state(state)
-        print(render_options(args.query, ranked, args.limit))
+        print(render_options(args.query, ranked, args.limit, using_addable))
         return 0
 
     if args.cmd == "choose":

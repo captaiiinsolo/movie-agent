@@ -7,7 +7,7 @@ import sys
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Normal-use movie workflow: show seed-sorted options for manual choice.")
+    parser = argparse.ArgumentParser(description="Normal-use movie workflow: show addable, high-quality options for manual choice.")
     parser.add_argument("query", help="Movie query, e.g. 'Toy Story 1995'")
     parser.add_argument("--limit", type=int, default=10, help="How many options to show")
     parser.add_argument("--choice", type=int, help="Displayed option number to submit")
@@ -23,7 +23,7 @@ def main() -> int:
         "--limit",
         str(args.limit),
         "--sort",
-        "seeders",
+        "score",
     ]
 
     if args.choice is not None:
