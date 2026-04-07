@@ -139,9 +139,21 @@ def score_candidate(result: dict[str, Any], config: dict[str, Any], title: str, 
     score += match_score
     reasons.extend(match_reasons)
 
+    source_quality_bonus = 0
+    if "bluray" in lower or "blu-ray" in lower or "bdrip" in lower or "remux" in lower:
+        source_quality_bonus = 24
+        reasons.append("high-quality source")
+    elif "web-dl" in lower or "webrip" in lower or "web rip" in lower:
+        source_quality_bonus = 10
+        reasons.append("web source")
+    elif "hdtv" in lower:
+        source_quality_bonus = 4
+        reasons.append("hdtv source")
+    score += source_quality_bonus
+
     group_hits = [group for group in prefs.get("preferred_groups", []) if group.lower() in lower]
     if group_hits:
-        score += 18
+        score += 10
         reasons.append(f"preferred group: {', '.join(group_hits)}")
 
     if "1080p" in lower:
