@@ -82,7 +82,7 @@ def select_fallback_torrent(current_torrents, before_snapshot, name_hint: str | 
     return scored[0][1] if scored else None
 
 
-def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, name_hint: str | None, timeout_seconds: int, poll_seconds: int, before_snapshot: dict[str, dict]) -> Path:
+def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, name_hint: str | None, timeout_seconds: int, poll_seconds: int, before_snapshot: dict[str, dict]) -> tuple[Path, dict]:
     deadline = time.time() + timeout_seconds
     last_state = None
 
@@ -106,7 +106,10 @@ def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, na
                 print(f"Torrent state: {state}, progress={progress:.2%}, name={torrent.get('name')}")
                 last_state = state
             if progress >= 1.0 or state in {"uploading", "stalledUP", "queuedUP", "forcedUP"}:
-                return choose_completed_target(downloads, name_hint=name_hint)
+                content_path = torrent.get("content_path") or torrent.get("save_path") or ""
+                if content_path:
+                    return Path(content_path), torrent
+                return choose_completed_target(downloads, name_hint=name_hint), torrent
 
         time.sleep(poll_seconds)
 
@@ -198,6 +201,7 @@ def main() -> int:
             )
 
     completed_path = Path(args.completed_path).expanduser() if args.completed_path else None
+    completed_torrent = None
     if completed_path is None:
         if not args.wait:
             print("Submission complete. Re-run later with --wait or provide --completed-path for postprocess.")
@@ -208,7 +212,7 @@ def main() -> int:
             print("Search/add endpoints work, but /api/v2/torrents/info and /api/v2/sync/maindata are not exposing active torrents to the script.")
             print("Use --completed-path for postprocess, or fix qBittorrent's torrent-list API visibility before using --wait.")
             return 4
-        completed_path = monitor_for_completion(
+        completed_path, completed_torrent = monitor_for_completion(
             client,
             Path(config["paths"]["downloads"]),
             torrent_hash=torrent_hash,
@@ -219,6 +223,13 @@ def main() -> int:
         )
 
     print(f"Completed target: {completed_path}")
+
+    if completed_torrent and completed_torrent.get("hash"):
+        torrent_hash_value = completed_torrent.get("hash")
+        print(f"Pausing completed torrent: {completed_torrent.get('name')}")
+        client.pause_torrents([torrent_hash_value])
+        print(f"Removing torrent from qBittorrent (keeping files): {completed_torrent.get('name')}")
+        client.delete_torrents([torrent_hash_value], delete_files=False)
 
     clean, stale_by_scan, scan_log = scan_path(completed_path)
     stale = stale_by_scan or db_older_than_days(7)

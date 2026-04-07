@@ -80,6 +80,12 @@ class QBittorrentClient:
     def list_torrents(self, filter_expr: str = "all") -> list[dict[str, Any]]:
         return self.get_json(f"/api/v2/torrents/info?filter={filter_expr}")
 
+    def pause_torrents(self, hashes: list[str]) -> str:
+        return self.post("/api/v2/torrents/pause", {"hashes": "|".join(hashes)}).strip()
+
+    def delete_torrents(self, hashes: list[str], delete_files: bool = False) -> str:
+        return self.post("/api/v2/torrents/delete", {"hashes": "|".join(hashes), "deleteFiles": "true" if delete_files else "false"}).strip()
+
 
 def load_config() -> dict[str, Any]:
     config_path = PRIMARY_CONFIG_PATH if PRIMARY_CONFIG_PATH.exists() else FALLBACK_CONFIG_PATH
