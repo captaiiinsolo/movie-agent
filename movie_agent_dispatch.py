@@ -2,17 +2,23 @@
 from __future__ import annotations
 
 import argparse
-import json
+import subprocess
 from pathlib import Path
 
-from movie_agent_lib import build_client, is_addable_target, load_config
-from movie_agent_live import STATE_PATH, load_state, save_state
+from movie_agent_lib import build_client, format_bytes, is_addable_target, load_config, run_ranked_search
+from movie_agent_live import load_state, save_state
 
 YES_WORDS = {"yes", "y", "download", "download it", "go ahead", "do it", "approve"}
 CLEAR_WORDS = {"clear", "cancel", "stop", "nevermind", "never mind"}
+RUN_PATH = Path("/home/santos-family/.openclaw/workspace/movie-agent/movie_agent_run.py")
 
 
-def dispatch_message(message: str, approve_download: bool = False) -> int:
+def run_command(cmd: list[str]) -> int:
+    proc = subprocess.run(cmd, text=True)
+    return proc.returncode
+
+
+def dispatch_message(message: str, approve_download: bool = False, wait: bool = True, timeout: int = 7200, poll: int = 10) -> int:
     text = (message or "").strip()
     lowered = text.lower()
     state = load_state()
@@ -73,18 +79,24 @@ def dispatch_message(message: str, approve_download: bool = False) -> int:
             print("Re-run with --approve-download to submit this exact pinned result.")
             return 0
 
-        config = load_config()
-        client = build_client(config)
-        client.login()
-        response = client.add_torrent_url(target, savepath=config["paths"]["downloads"])
-        print("Submission response:", response or "<empty>")
-        print(f"Submitted exact pinned selection: {name}")
-        return 0
+        cmd = [
+            "python3",
+            str(RUN_PATH),
+            query,
+            "--choice",
+            str(choice),
+            "--limit",
+            str(max(len(state.get("options") or []), 5)),
+            "--approve-download",
+        ]
+        if wait:
+            cmd.append("--wait")
+            cmd.extend(["--timeout", str(timeout), "--poll", str(poll)])
+        return run_command(cmd)
 
     config = load_config()
     client = build_client(config)
     client.login()
-    from movie_agent_lib import format_bytes, run_ranked_search
 
     payload, ranked = run_ranked_search(client, config, text, limit=100, plugins="piratebay,one337x,kickasstorrents,torrentgalaxy")
     addable = [
@@ -154,8 +166,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Dispatch Telegram/OpenClaw movie-agent messages through pinned live state.")
     parser.add_argument("message", nargs="?", default="", help="Incoming user chat message")
     parser.add_argument("--approve-download", action="store_true", help="Actually submit the pinned selection")
+    parser.add_argument("--no-wait", action="store_true", help="Submit without waiting for completion/postprocess")
+    parser.add_argument("--timeout", type=int, default=7200, help="Wait timeout in seconds when following the download")
+    parser.add_argument("--poll", type=int, default=10, help="Poll interval in seconds when following the download")
     args = parser.parse_args()
-    return dispatch_message(args.message, approve_download=args.approve_download)
+    return dispatch_message(
+        args.message,
+        approve_download=args.approve_download,
+        wait=not args.no_wait,
+        timeout=args.timeout,
+        poll=args.poll,
+    )
 
 
 if __name__ == "__main__":
