@@ -22,9 +22,10 @@ from movie_agent_lib import (
 )
 
 
-def print_candidates(query: str, total: int, ranked, choice: int) -> None:
+def print_candidates(query: str, total: int, ranked, choice: int, display_sort: str) -> None:
     print(f"Query: {query}")
     print(f"Search results seen: {total}")
+    print(f"Display sort: {display_sort}")
     print()
     for idx, candidate in enumerate(ranked, start=1):
         raw = candidate.raw
@@ -115,8 +116,9 @@ def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, na
 def main() -> int:
     parser = argparse.ArgumentParser(description="End-to-end movie agent orchestrator")
     parser.add_argument("query", help="Movie query, e.g. 'Beethoven 1992'")
-    parser.add_argument("--choice", type=int, default=1, help="Ranked option to use")
-    parser.add_argument("--limit", type=int, default=5, help="Number of ranked results to consider")
+    parser.add_argument("--choice", type=int, default=1, help="Displayed option to use")
+    parser.add_argument("--limit", type=int, default=5, help="Number of results to display")
+    parser.add_argument("--sort", choices=["score", "seeders"], default="score", help="Display results sorted by score or seeders")
     parser.add_argument("--approve-download", action="store_true", help="Actually submit the chosen release to qBittorrent")
     parser.add_argument("--wait", action="store_true", help="Wait for qBittorrent completion after submission")
     parser.add_argument("--approve-move", action="store_true", help="Actually move to Movies after scan and normalization")
@@ -131,7 +133,18 @@ def main() -> int:
     client = build_client(config)
     client.login()
 
-    payload, ranked = run_ranked_search(client, config, args.query, limit=args.limit)
+    payload, ranked = run_ranked_search(client, config, args.query, limit=max(args.limit, 100))
+    if args.sort == "seeders":
+        ranked = sorted(
+            ranked,
+            key=lambda c: (
+                1 if is_addable_target(c.raw.get("fileUrl") or c.raw.get("downloadUrl") or c.raw.get("magnetUri") or "") else 0,
+                int(c.raw.get("nbSeeders") or c.raw.get("nb_seeders") or c.raw.get("seeders") or 0),
+                c.score,
+            ),
+            reverse=True,
+        )
+    ranked = ranked[: args.limit]
     if not ranked:
         print("No usable results found.")
         return 1
@@ -139,7 +152,7 @@ def main() -> int:
         print(f"Choice {args.choice} is out of range. Available options: 1-{len(ranked)}")
         return 1
 
-    print_candidates(args.query, payload.get("total", 0), ranked, args.choice)
+    print_candidates(args.query, payload.get("total", 0), ranked, args.choice, args.sort)
     selected = ranked[args.choice - 1]
     raw = selected.raw
     target = raw.get("fileUrl") or raw.get("downloadUrl") or raw.get("magnetUri") or raw.get("descrLink")
