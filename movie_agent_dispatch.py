@@ -39,6 +39,9 @@ def main() -> int:
         if not choice or not query:
             print("Nothing is selected yet. Search for a movie first.")
             return 1
+        if not state.get("addable_results_found"):
+            print("Current search results did not include directly addable releases. I recommend searching a different title variant or improving the search backend before downloading from this set.")
+            return 1
         return run_cmd([
             "movie_agent_pick.py",
             query,

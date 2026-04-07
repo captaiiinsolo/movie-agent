@@ -284,9 +284,9 @@ def score_candidate(result: dict[str, Any], config: dict[str, Any], title: str, 
     return Candidate(raw=result, score=score, reasons=reasons)
 
 
-def run_ranked_search(client: QBittorrentClient, config: dict[str, Any], query: str, limit: int = 5) -> tuple[dict[str, Any], list[Candidate]]:
+def run_ranked_search(client: QBittorrentClient, config: dict[str, Any], query: str, limit: int = 5, plugins: str = "enabled") -> tuple[dict[str, Any], list[Candidate]]:
     title, year = parse_request(query)
-    search_id = client.start_search(query)
+    search_id = client.start_search(query, plugins=plugins)
     payload: dict[str, Any] = {"results": [], "total": 0, "status": "Running"}
 
     try:

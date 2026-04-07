@@ -66,7 +66,7 @@ def main() -> int:
         config = load_config()
         client = build_client(config)
         client.login()
-        payload, ranked = run_ranked_search(client, config, args.query, limit=100)
+        payload, ranked = run_ranked_search(client, config, args.query, limit=100, plugins="piratebay,one337x,kickasstorrents,torrentgalaxy")
         addable = [
             c for c in ranked
             if is_addable_target(c.raw.get("fileUrl") or c.raw.get("downloadUrl") or c.raw.get("magnetUri") or "")
@@ -97,6 +97,7 @@ def main() -> int:
             "query": args.query,
             "results_seen": payload.get("total", 0),
             "options": [candidate.raw for candidate in ranked[: args.limit]],
+            "addable_results_found": len(addable),
         }
         save_state(state)
         print(render_options(args.query, ranked, args.limit, using_addable))
