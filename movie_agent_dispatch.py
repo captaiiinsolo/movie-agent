@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from movie_agent_lib import build_client, load_config
+
 STATE_PATH = Path("/home/santos-family/.openclaw/workspace/movie-agent/state/live_state.json")
 
 
@@ -15,6 +17,11 @@ def load_state() -> dict:
     if STATE_PATH.exists():
         return json.loads(STATE_PATH.read_text())
     return {}
+
+
+def save_state(state: dict) -> None:
+    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    STATE_PATH.write_text(json.dumps(state, indent=2))
 
 
 def run_cmd(args: list[str]) -> int:
@@ -31,6 +38,17 @@ def main() -> int:
     state = load_state()
 
     if lowered in {"clear", "cancel", "reset"}:
+        active_hash = state.get("active_torrent_hash")
+        if active_hash:
+            try:
+                cfg = load_config()
+                client = build_client(cfg)
+                client.login()
+                client.pause_torrents([active_hash])
+                client.delete_torrents([active_hash], delete_files=False)
+                print(f"Canceled tracked torrent: {active_hash}")
+            except Exception as exc:
+                print(f"Warning: could not cancel tracked torrent cleanly: {exc}")
         return run_cmd(["movie_agent_live.py", "clear"])
 
     if lowered in {"yes", "y", "download it", "do it", "go ahead"}:
@@ -42,6 +60,14 @@ def main() -> int:
         if not state.get("addable_results_found"):
             print("Current search results did not include directly addable releases. I recommend searching a different title variant or improving the search backend before downloading from this set.")
             return 1
+        options = state.get("options") or []
+        idx = choice - 1
+        selected = options[idx] if 0 <= idx < len(options) else {}
+        target = selected.get("fileUrl") or selected.get("downloadUrl") or selected.get("magnetUri") or ""
+        match = re.search(r"btih:([A-Fa-f0-9]+)", target)
+        if match:
+            state["active_torrent_hash"] = match.group(1).lower()
+            save_state(state)
         return run_cmd([
             "movie_agent_pick.py",
             query,
