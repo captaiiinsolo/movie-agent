@@ -42,3 +42,21 @@ Submit and wait for completion:
 ```bash
 python3 movie_agent_pick.py "Toy Story 1995" --choice 1 --download --wait
 ```
+
+## Live chat scaffolding
+For a Telegram/OpenClaw conversation flow, use:
+
+```bash
+python3 movie_agent_live.py search "Toy Story 1995"
+python3 movie_agent_live.py choose 1
+```
+
+This stores lightweight session state in:
+
+- `state/live_state.json`
+
+That gives the chat agent a stable contract for:
+- latest query
+- displayed options
+- selected option
+- confirmation handoff

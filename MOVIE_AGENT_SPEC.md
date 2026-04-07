@@ -165,6 +165,38 @@ The agent sends a completion summary including:
 - Do not silently delete source files until destination integrity is confirmed.
 - Do not expose qBittorrent credentials in chat output.
 
+## Live Telegram/OpenClaw v1 contract
+
+### Stable entrypoint
+Use `movie_agent_pick.py` for CLI-driven normal use and `movie_agent_live.py` as the stateful conversation helper for chat surfaces.
+
+### Conversation shape
+1. User sends a movie request
+2. Agent runs `movie_agent_live.py search "<query>"`
+3. Agent replies with numbered options
+4. User replies with a number
+5. Agent runs `movie_agent_live.py choose <n>` and asks for yes/no confirmation
+6. On yes, agent runs the approved backend flow (`movie_agent_pick.py` or `movie_agent_run.py` with stable flags)
+7. Agent reports milestones: submitted, downloading, completed, scanned, moved, or approval-gated stop
+
+### State model
+Live state is kept in:
+- `state/live_state.json`
+
+Minimum stored fields:
+- latest query
+- displayed options
+- selected choice
+- selected release name
+- last action summary
+
+### v1 boundaries
+- Single-user flow for Solo only
+- Approval required before download
+- Approval required for `sudo freshclam`
+- Approval required for privileged move fallback
+- No autonomous background download starts from chat without explicit user confirmation
+
 ## Future extensions
 Possible future improvements:
 - metadata/artwork fetching
