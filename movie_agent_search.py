@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 
-from movie_agent_lib import build_client, format_bytes, is_addable_target, load_config, run_ranked_search
+from movie_agent_lib import build_client, is_addable_target, load_config, run_ranked_search, summarize_candidate
 
 
 def main() -> int:
@@ -37,19 +37,11 @@ def main() -> int:
 
     for idx, candidate in enumerate(ranked, start=1):
         raw = candidate.raw
-        name = raw.get("fileName") or raw.get("file_name") or raw.get("fileUrl") or raw.get("descrLink") or raw.get("name") or "(unknown)"
-        size = int(raw.get("fileSize") or raw.get("file_size") or 0)
-        seeders = raw.get("nbSeeders") or raw.get("nb_seeders") or raw.get("seeders") or 0
-        leechers = raw.get("nbLeechers") or raw.get("nb_leechers") or raw.get("leechers") or 0
         descr = raw.get("descrLink") or ""
         print(f"Option {idx}")
-        print(f"  Name: {name}")
-        print(f"  Score: {candidate.score:.1f}")
-        print(f"  Size: {format_bytes(size)}")
-        print(f"  Seeders/Leechers: {seeders}/{leechers}")
+        print(summarize_candidate(candidate))
         if descr:
             print(f"  Source: {descr}")
-        print(f"  Why: {', '.join(candidate.reasons[:6])}")
         print()
 
     if not ranked:

@@ -19,6 +19,7 @@ from movie_agent_lib import (
     run_ranked_search,
     safe_move,
     scan_path,
+    summarize_candidate,
 )
 
 
@@ -28,15 +29,11 @@ def print_candidates(query: str, total: int, ranked, choice: int, display_sort: 
     print(f"Display sort: {display_sort}")
     print()
     for idx, candidate in enumerate(ranked, start=1):
-        raw = candidate.raw
-        name = raw.get("fileName") or raw.get("file_name") or raw.get("fileUrl") or raw.get("descrLink") or raw.get("name") or "(unknown)"
-        size = int(raw.get("fileSize") or raw.get("file_size") or 0)
-        seeders = raw.get("nbSeeders") or raw.get("nb_seeders") or raw.get("seeders") or 0
-        leechers = raw.get("nbLeechers") or raw.get("nb_leechers") or raw.get("leechers") or 0
         prefix = "=>" if idx == choice else "  "
-        print(f"{prefix} Option {idx}: {name}")
-        print(f"{prefix}   Score: {candidate.score:.1f} | Size: {format_bytes(size)} | Seeders/Leechers: {seeders}/{leechers}")
-        print(f"{prefix}   Why: {', '.join(candidate.reasons[:6])}")
+        summary = summarize_candidate(candidate).replace("\n", f"\n{prefix}   ")
+        first, rest = summary.split("\n", 1)
+        print(f"{prefix} Option {idx}: {first.replace('Name: ', '')}")
+        print(f"{prefix}   {rest}")
         print()
 
 

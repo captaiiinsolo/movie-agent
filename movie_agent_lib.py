@@ -143,6 +143,21 @@ def is_addable_target(url: str) -> bool:
     return lowered.startswith("magnet:?") or lowered.endswith(".torrent")
 
 
+def summarize_candidate(candidate: Candidate) -> str:
+    raw = candidate.raw
+    name = raw.get("fileName") or raw.get("file_name") or raw.get("fileUrl") or raw.get("descrLink") or raw.get("name") or "(unknown)"
+    size = int(raw.get("fileSize") or raw.get("file_size") or 0)
+    seeders = raw.get("nbSeeders") or raw.get("nb_seeders") or raw.get("seeders") or 0
+    leechers = raw.get("nbLeechers") or raw.get("nb_leechers") or raw.get("leechers") or 0
+    addable = is_addable_target(raw.get("fileUrl") or raw.get("downloadUrl") or raw.get("magnetUri") or "")
+    addable_text = "yes" if addable else "no"
+    return (
+        f"Name: {name}\n"
+        f"  Score: {candidate.score:.1f} | Size: {format_bytes(size)} | Seeders/Leechers: {seeders}/{leechers} | Addable: {addable_text}\n"
+        f"  Why: {', '.join(candidate.reasons[:6])}"
+    )
+
+
 def score_candidate(result: dict[str, Any], config: dict[str, Any], title: str, year: int | None) -> Candidate:
     prefs = config["preferences"]
     filters = config["filters"]["reject"]
@@ -199,13 +214,16 @@ def score_candidate(result: dict[str, Any], config: dict[str, Any], title: str, 
         score -= 120
         reasons.append("rejected quality class")
 
-    if prefs.get("avoid_dual_audio") and "dual audio" in lower:
+    foreign_audio_tags = [
+        "dual audio", "multi audio", "multi-audio", "3audio", "2audio", "ita", "italian", "latino", "espanol", "spanish", "french", "german", "russian", "hindi", "multi",
+    ]
+    if prefs.get("avoid_dual_audio") and any(tag in lower for tag in ["dual audio", "multi audio", "multi-audio", "3audio", "2audio"]):
         score -= 25
         reasons.append("dual-audio penalty")
 
-    if prefs.get("avoid_foreign_dub_unless_requested") and any(tag in lower for tag in ["dubbed", "french", "german", "ita", "spanish audio"]):
-        score -= 40
-        reasons.append("foreign-dub penalty")
+    if prefs.get("avoid_foreign_dub_unless_requested") and any(tag in lower for tag in foreign_audio_tags):
+        score -= 45
+        reasons.append("foreign-audio penalty")
 
     if prefs.get("subtitles") == "english_only" and any(tag in lower for tag in ["eng", "english sub", "subs"]):
         score += 5
