@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import time
 from pathlib import Path
 
@@ -79,11 +80,50 @@ def select_fallback_torrent(current_torrents, before_snapshot, name_hint: str | 
     return scored[0][1] if scored else None
 
 
-def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, name_hint: str | None, timeout_seconds: int, poll_seconds: int, before_snapshot: dict[str, dict]) -> tuple[Path | None, dict | None]:
+def maybe_send_progress_update(target: str | None, query: str, percent: int, torrent: dict) -> None:
+    if not target:
+        return
+    name = torrent.get("name") or query
+    state = torrent.get("state") or "unknown"
+    message = f"{name}: {percent}% complete ({state})"
+    subprocess.run(
+        [
+            "openclaw", "message", "send",
+            "--channel", "telegram",
+            "--target", target,
+            "--message", message,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def maybe_send_scan_update(target: str | None, completed_path: Path, clean: bool, stale: bool) -> None:
+    if not target:
+        return
+    status = "clean" if clean else "failed"
+    suffix = " (definitions stale)" if stale else ""
+    message = f"ClamAV scan {status} for {completed_path.name}{suffix}"
+    subprocess.run(
+        [
+            "openclaw", "message", "send",
+            "--channel", "telegram",
+            "--target", target,
+            "--message", message,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, name_hint: str | None, timeout_seconds: int, poll_seconds: int, before_snapshot: dict[str, dict], notify_target: str | None = None, notify_query: str | None = None) -> tuple[Path | None, dict | None]:
     deadline = time.time() + timeout_seconds
     last_state = None
     last_progress = None
     tracked_torrent = None
+    sent_milestones: set[int] = set()
 
     while time.time() < deadline:
         torrents = client.list_torrents("all")
@@ -106,7 +146,12 @@ def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, na
                 print(f"Torrent state: {state}, progress={progress:.2%}, name={torrent.get('name')}")
                 last_state = state
                 last_progress = progress
+            for milestone in (25, 50, 75):
+                if progress >= milestone / 100 and milestone not in sent_milestones:
+                    maybe_send_progress_update(notify_target, notify_query or name_hint or "download", milestone, torrent)
+                    sent_milestones.add(milestone)
             if progress >= 1.0 or state in {"uploading", "stalledUP", "queuedUP", "forcedUP"}:
+                maybe_send_progress_update(notify_target, notify_query or name_hint or "download", 100, torrent)
                 content_path = torrent.get("content_path") or torrent.get("save_path") or ""
                 if content_path:
                     return Path(content_path), torrent
@@ -131,6 +176,7 @@ def main() -> int:
     parser.add_argument("--completed-path", help="Explicit completed download path, bypass qBittorrent waiting")
     parser.add_argument("--timeout", type=int, default=7200, help="Wait timeout in seconds when monitoring completion")
     parser.add_argument("--poll", type=int, default=10, help="Poll interval in seconds when monitoring completion")
+    parser.add_argument("--notify-target", help="Telegram target/chat id for progress notifications")
     args = parser.parse_args()
 
     config = load_config()
@@ -230,6 +276,8 @@ def main() -> int:
             timeout_seconds=args.timeout,
             poll_seconds=args.poll,
             before_snapshot=before_snapshot,
+            notify_target=args.notify_target,
+            notify_query=args.query,
         )
         if completed_path is None:
             if completed_torrent is not None:
@@ -257,6 +305,7 @@ def main() -> int:
     stale = stale_by_scan or db_older_than_days(7)
     print(f"Scan clean: {clean}")
     print(f"DB stale signal: {stale}")
+    maybe_send_scan_update(args.notify_target, completed_path, clean, stale)
 
     if not clean:
         print(scan_log)

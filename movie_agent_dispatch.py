@@ -11,6 +11,7 @@ from movie_agent_live import load_state, save_state
 YES_WORDS = {"yes", "y", "download", "download it", "go ahead", "do it", "approve"}
 CLEAR_WORDS = {"clear", "cancel", "stop", "nevermind", "never mind"}
 RUN_PATH = Path("/home/santos-family/.openclaw/workspace/movie-agent/movie_agent_run.py")
+DEFAULT_NOTIFY_TARGET = "7976063340"
 
 
 def run_command(cmd: list[str]) -> int:
@@ -93,6 +94,7 @@ def dispatch_message(message: str, approve_download: bool = False, wait: bool = 
         if wait:
             cmd.append("--wait")
             cmd.extend(["--timeout", str(timeout), "--poll", str(poll)])
+        cmd.extend(["--notify-target", DEFAULT_NOTIFY_TARGET])
         return run_command(cmd)
 
     config = load_config()
