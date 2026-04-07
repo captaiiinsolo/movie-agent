@@ -24,6 +24,7 @@ JUNK_TEXT_FILENAMES = {
     "torrent downloaded from uindex.org .txt",
     "torrent downloaded from uindex.org.txt",
     "downloaded from uindex.org.txt",
+    "torrent downloaded from torrenting.com.txt",
 }
 JUNK_IMAGE_FILENAMES = {
     "www.yify-torrents.com.jpg",
@@ -457,9 +458,24 @@ def verify_same_tree(src: Path, dst: Path) -> bool:
 
 def sudo_move_approval_command(source: Path, destination_parent: Path) -> str:
     destination = destination_parent / source.name
-    src = shlex.quote(str(source))
-    dst = shlex.quote(str(destination))
-    return f"sudo cp -a {src} {dst} && sudo chown -R jellyfin:jellyfin {dst} && python3 - <<'PY'\nfrom pathlib import Path\nsrc = Path({src!r})\ndst = Path({dst!r})\nsrc_files = sorted(str(p.relative_to(src)) for p in src.rglob('*') if p.is_file())\ndst_files = sorted(str(p.relative_to(dst)) for p in dst.rglob('*') if p.is_file())\nprint('MATCH' if src_files == dst_files else 'MISMATCH')\nPY\n&& sudo rm -r {src}"
+    src = str(source)
+    dst = str(destination)
+    src_q = shlex.quote(src)
+    dst_q = shlex.quote(dst)
+    return (
+        f"sudo mkdir -p {dst_q} && "
+        f"sudo cp -r {src_q}/. {dst_q}/ && "
+        f"sudo chown -R jellyfin:jellyfin {dst_q} && "
+        "python3 - <<'PY'\n"
+        "from pathlib import Path\n"
+        f"src = Path({src!r})\n"
+        f"dst = Path({dst!r})\n"
+        "src_files = sorted(str(p.relative_to(src)) for p in src.rglob('*') if p.is_file())\n"
+        "dst_files = sorted(str(p.relative_to(dst)) for p in dst.rglob('*') if p.is_file())\n"
+        "print('MATCH' if src_files == dst_files else 'MISMATCH')\n"
+        "PY\n"
+        f"&& sudo rm -r {src_q}"
+    )
 
 
 def safe_move(source: Path, destination_parent: Path) -> tuple[Path, list[str]]:
