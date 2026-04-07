@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import shutil
 import subprocess
 import time
@@ -306,6 +307,14 @@ def db_older_than_days(days: int) -> bool:
     if mtime is None:
         return True
     return (time.time() - mtime) > days * 86400
+
+
+def freshclam_approval_command() -> str:
+    return "sudo freshclam"
+
+
+def run_freshclam_with_sudo() -> tuple[int, str, str]:
+    return run_command(["sudo", "freshclam"])
 
 
 def remove_junk_txt_files(root: Path) -> list[Path]:

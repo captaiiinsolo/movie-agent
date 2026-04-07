@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import sys
 import time
 from pathlib import Path
 
@@ -12,8 +11,10 @@ from movie_agent_lib import (
     db_older_than_days,
     find_video_file,
     format_bytes,
+    freshclam_approval_command,
     load_config,
     normalize_movie_folder,
+    run_freshclam_with_sudo,
     run_ranked_search,
     safe_move,
     scan_path,
@@ -75,6 +76,7 @@ def main() -> int:
     parser.add_argument("--wait", action="store_true", help="Wait for qBittorrent completion after submission")
     parser.add_argument("--approve-move", action="store_true", help="Actually move to Movies after scan and normalization")
     parser.add_argument("--allow-stale-db", action="store_true", help="Proceed even if ClamAV DB appears stale")
+    parser.add_argument("--update-definitions", action="store_true", help="Run sudo freshclam before rescanning when DB is stale")
     parser.add_argument("--completed-path", help="Explicit completed download path, bypass qBittorrent waiting")
     parser.add_argument("--timeout", type=int, default=7200, help="Wait timeout in seconds when monitoring completion")
     parser.add_argument("--poll", type=int, default=10, help="Poll interval in seconds when monitoring completion")
@@ -98,7 +100,7 @@ def main() -> int:
     target = raw.get("fileUrl") or raw.get("descrLink")
     selected_name = raw.get("fileName") or raw.get("name") or raw.get("descrLink") or "selected release"
 
-    if not args.approve_download:
+    if not args.approve-download:
         print("Download approval not provided.")
         print("Preview complete. Re-run with --approve-download to submit to qBittorrent.")
         return 0
@@ -134,10 +136,29 @@ def main() -> int:
     if not clean:
         print(scan_log)
         return 1
-    if stale and not args.allow_stale_db:
+
+    if stale and not args.allow_stale_db and not args.update_definitions:
         print(scan_log)
-        print("ClamAV database appears stale. Approval-gated sudo freshclam is required before continuing.")
+        print("ClamAV database appears stale.")
+        print(f"Approval required to continue: {freshclam_approval_command()}")
         return 2
+
+    if stale and args.update_definitions:
+        code, stdout, stderr = run_freshclam_with_sudo()
+        print(stdout)
+        if code != 0:
+            print(stderr)
+            return 3
+        clean, stale_by_scan, scan_log = scan_path(completed_path)
+        stale = stale_by_scan or db_older_than_days(7)
+        print(f"Rescan clean: {clean}")
+        print(f"DB stale signal after update: {stale}")
+        if not clean:
+            print(scan_log)
+            return 1
+        if stale and not args.allow_stale_db:
+            print(scan_log)
+            return 2
 
     normalized_root, actions = normalize_movie_folder(
         completed_path,

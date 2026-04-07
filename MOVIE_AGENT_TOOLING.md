@@ -29,12 +29,22 @@ python3 /home/santos-family/.openclaw/workspace/movie_agent_add.py "Beethoven 19
 ## Postprocess example
 Preview scan + rename logic without moving:
 ```bash
-python3 /home/santos-family/.openclaw/workspace/movie_agent_postprocess.py --path "/path/to/completed/download" --allow-stale-db
+python3 /home/santos-family/.openclaw/workspace/movie_agent_postprocess.py --path "/path/to/completed/download"
+```
+
+If ClamAV definitions are stale, the tool will stop and tell you approval is required for:
+```bash
+sudo freshclam
+```
+
+After approval, rerun with:
+```bash
+python3 /home/santos-family/.openclaw/workspace/movie_agent_postprocess.py --path "/path/to/completed/download" --update-definitions
 ```
 
 Actually move after scan + normalization:
 ```bash
-python3 /home/santos-family/.openclaw/workspace/movie_agent_postprocess.py --path "/path/to/completed/download" --allow-stale-db --move
+python3 /home/santos-family/.openclaw/workspace/movie_agent_postprocess.py --path "/path/to/completed/download" --update-definitions --move
 ```
 
 ## Orchestrator example
@@ -43,14 +53,24 @@ Preview only, no download submitted:
 python3 /home/santos-family/.openclaw/workspace/movie-agent/movie_agent_run.py "Beethoven 1992" --choice 1 --limit 3
 ```
 
-Submit after approval but stop before moving:
+Submit after approval and wait for completion:
 ```bash
-python3 /home/santos-family/.openclaw/workspace/movie-agent/movie_agent_run.py "Beethoven 1992" --choice 1 --limit 3 --approve-download --wait --allow-stale-db
+python3 /home/santos-family/.openclaw/workspace/movie-agent/movie_agent_run.py "Beethoven 1992" --choice 1 --limit 3 --approve-download --wait
+```
+
+If ClamAV definitions are stale, the orchestrator will stop and tell you approval is required for:
+```bash
+sudo freshclam
+```
+
+After approval, rerun with:
+```bash
+python3 /home/santos-family/.openclaw/workspace/movie-agent/movie_agent_run.py "Beethoven 1992" --choice 1 --limit 3 --approve-download --wait --update-definitions
 ```
 
 Full flow including final move:
 ```bash
-python3 /home/santos-family/.openclaw/workspace/movie-agent/movie_agent_run.py "Beethoven 1992" --choice 1 --limit 3 --approve-download --wait --allow-stale-db --approve-move
+python3 /home/santos-family/.openclaw/workspace/movie-agent/movie_agent_run.py "Beethoven 1992" --choice 1 --limit 3 --approve-download --wait --update-definitions --approve-move
 ```
 
 ## Current behavior
