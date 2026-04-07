@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import shutil
@@ -418,6 +419,13 @@ def verify_same_tree(src: Path, dst: Path) -> bool:
     return src_files == dst_files
 
 
+def sudo_move_approval_command(source: Path, destination_parent: Path) -> str:
+    destination = destination_parent / source.name
+    src = shlex.quote(str(source))
+    dst = shlex.quote(str(destination))
+    return f"sudo cp -a {src} {dst} && sudo chown -R jellyfin:jellyfin {dst} && python3 - <<'PY'\nfrom pathlib import Path\nsrc = Path({src!r})\ndst = Path({dst!r})\nsrc_files = sorted(str(p.relative_to(src)) for p in src.rglob('*') if p.is_file())\ndst_files = sorted(str(p.relative_to(dst)) for p in dst.rglob('*') if p.is_file())\nprint('MATCH' if src_files == dst_files else 'MISMATCH')\nPY\n&& sudo rm -r {src}"
+
+
 def safe_move(source: Path, destination_parent: Path) -> tuple[Path, list[str]]:
     actions: list[str] = []
     destination = destination_parent / source.name
@@ -431,7 +439,10 @@ def safe_move(source: Path, destination_parent: Path) -> tuple[Path, list[str]]:
         actions.append("moved on same filesystem")
         return destination, actions
 
-    shutil.copytree(source, destination)
+    try:
+        shutil.copytree(source, destination)
+    except PermissionError as exc:
+        raise PermissionError(f"Permission denied moving to {destination_parent}. Approval required: {sudo_move_approval_command(source, destination_parent)}") from exc
     actions.append("copied across filesystems")
 
     if not verify_same_tree(source, destination):

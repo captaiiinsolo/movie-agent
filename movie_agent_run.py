@@ -280,7 +280,11 @@ def main() -> int:
         print(f"Preview complete. Normalized path: {normalized_root}")
         return 0
 
-    final_path, move_actions = safe_move(normalized_root, Path(config["paths"]["movies_destination"]))
+    try:
+        final_path, move_actions = safe_move(normalized_root, Path(config["paths"]["movies_destination"]))
+    except PermissionError as exc:
+        print(str(exc))
+        return 4
     for action in move_actions:
         print(f"Move: {action}")
     print(f"Final path: {final_path}")
