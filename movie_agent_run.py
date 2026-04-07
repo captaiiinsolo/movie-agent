@@ -68,7 +68,7 @@ def select_fallback_torrent(current_torrents, before_snapshot, name_hint: str | 
     scored.sort(key=lambda pair: (pair[0], pair[1].get("added_on", 0)), reverse=True)
     if debug:
         print("Fallback candidates:")
-        for score, item in scored[:5]:
+        for score, item in scored[:8]:
             item_hash = item.get("hash")
             before = before_snapshot.get(item_hash, {})
             print(
@@ -77,7 +77,7 @@ def select_fallback_torrent(current_torrents, before_snapshot, name_hint: str | 
                 f"added_on={item.get('added_on')} | before_added_on={before.get('added_on')} | "
                 f"before_progress={float(before.get('progress') or 0):.2%}"
             )
-    return scored[0][1] if scored and scored[0][0] > 0 else None
+    return scored[0][1] if scored else None
 
 
 def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, name_hint: str | None, timeout_seconds: int, poll_seconds: int, before_snapshot: dict[str, dict]) -> Path:
@@ -172,7 +172,15 @@ def main() -> int:
             break
 
     if torrent_hash is None:
-        print("No new torrent hash detected after submission, falling back to name-based tracking.")
+        print("No new torrent hash detected after submission, falling back to heuristic tracking.")
+        current = client.list_torrents("all")
+        print("Top torrents after submission:")
+        top = sorted(current, key=lambda t: t.get('added_on', 0), reverse=True)[:8]
+        for item in top:
+            print(
+                f"  name={item.get('name')} | state={item.get('state')} | "
+                f"progress={float(item.get('progress') or 0):.2%} | added_on={item.get('added_on')}"
+            )
 
     completed_path = Path(args.completed_path).expanduser() if args.completed_path else None
     if completed_path is None:
