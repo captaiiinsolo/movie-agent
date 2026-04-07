@@ -38,22 +38,34 @@ def print_candidates(query: str, total: int, ranked, choice: int) -> None:
         print()
 
 
-def monitor_for_completion(client, downloads: Path, name_hint: str | None, timeout_seconds: int, poll_seconds: int) -> Path:
+def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, name_hint: str | None, timeout_seconds: int, poll_seconds: int) -> Path:
     deadline = time.time() + timeout_seconds
     last_state = None
 
     while time.time() < deadline:
         torrents = client.list_torrents("all")
-        candidates = []
-        for torrent in torrents:
-            name = (torrent.get("name") or "")
-            if name_hint and name_hint.lower() not in name.lower():
-                continue
-            candidates.append(torrent)
+        torrent = None
 
-        candidates.sort(key=lambda t: t.get("added_on", 0), reverse=True)
-        if candidates:
-            torrent = candidates[0]
+        if torrent_hash:
+            for item in torrents:
+                if item.get("hash") == torrent_hash:
+                    torrent = item
+                    break
+
+        if torrent is None:
+            candidates = []
+            lowered_hint = (name_hint or "").lower()
+            hint_tokens = [token for token in lowered_hint.replace('.', ' ').replace('-', ' ').split() if token]
+            for item in torrents:
+                name = (item.get("name") or "")
+                lowered_name = name.lower()
+                if hint_tokens and not all(token in lowered_name for token in hint_tokens[:2]):
+                    continue
+                candidates.append(item)
+            candidates.sort(key=lambda t: t.get("added_on", 0), reverse=True)
+            torrent = candidates[0] if candidates else None
+
+        if torrent is not None:
             state = torrent.get("state")
             progress = float(torrent.get("progress", 0))
             if state != last_state:
@@ -97,7 +109,7 @@ def main() -> int:
     print_candidates(args.query, payload.get("total", 0), ranked, args.choice)
     selected = ranked[args.choice - 1]
     raw = selected.raw
-    target = raw.get("fileUrl") or raw.get("descrLink")
+    target = raw.get("fileUrl") or raw.get("downloadUrl") or raw.get("magnetUri") or raw.get("descrLink")
     selected_name = raw.get("fileName") or raw.get("name") or raw.get("descrLink") or "selected release"
 
     if not args.approve_download:
@@ -109,9 +121,21 @@ def main() -> int:
         print("Selected result does not expose a usable download or magnet URL.")
         return 1
 
+    before_hashes = {item.get("hash") for item in client.list_torrents("all")}
     response = client.add_torrent_url(target, savepath=config["paths"]["downloads"])
     print("Submission response:", response or "<empty>")
     print(f"Submitted: {selected_name}")
+
+    torrent_hash = None
+    for _ in range(10):
+        time.sleep(1)
+        current = client.list_torrents("all")
+        new_items = [item for item in current if item.get("hash") not in before_hashes]
+        if new_items:
+            new_items.sort(key=lambda t: t.get("added_on", 0), reverse=True)
+            torrent_hash = new_items[0].get("hash")
+            print(f"Tracked torrent hash: {torrent_hash}")
+            break
 
     completed_path = Path(args.completed_path).expanduser() if args.completed_path else None
     if completed_path is None:
@@ -121,7 +145,8 @@ def main() -> int:
         completed_path = monitor_for_completion(
             client,
             Path(config["paths"]["downloads"]),
-            name_hint=args.query,
+            torrent_hash=torrent_hash,
+            name_hint=selected_name,
             timeout_seconds=args.timeout,
             poll_seconds=args.poll,
         )
