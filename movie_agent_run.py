@@ -79,9 +79,11 @@ def select_fallback_torrent(current_torrents, before_snapshot, name_hint: str | 
     return scored[0][1] if scored else None
 
 
-def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, name_hint: str | None, timeout_seconds: int, poll_seconds: int, before_snapshot: dict[str, dict]) -> tuple[Path, dict]:
+def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, name_hint: str | None, timeout_seconds: int, poll_seconds: int, before_snapshot: dict[str, dict]) -> tuple[Path | None, dict | None]:
     deadline = time.time() + timeout_seconds
     last_state = None
+    last_progress = None
+    tracked_torrent = None
 
     while time.time() < deadline:
         torrents = client.list_torrents("all")
@@ -97,11 +99,13 @@ def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, na
             torrent = select_fallback_torrent(torrents, before_snapshot, name_hint, debug=(last_state is None))
 
         if torrent is not None:
+            tracked_torrent = torrent
             state = torrent.get("state")
             progress = float(torrent.get("progress", 0))
-            if state != last_state:
+            if state != last_state or progress != last_progress:
                 print(f"Torrent state: {state}, progress={progress:.2%}, name={torrent.get('name')}")
                 last_state = state
+                last_progress = progress
             if progress >= 1.0 or state in {"uploading", "stalledUP", "queuedUP", "forcedUP"}:
                 content_path = torrent.get("content_path") or torrent.get("save_path") or ""
                 if content_path:
@@ -110,7 +114,7 @@ def monitor_for_completion(client, downloads: Path, torrent_hash: str | None, na
 
         time.sleep(poll_seconds)
 
-    raise RuntimeError("Timed out waiting for torrent completion")
+    return None, tracked_torrent
 
 
 def main() -> int:
@@ -176,6 +180,9 @@ def main() -> int:
     response = client.add_torrent_url(target, savepath=config["paths"]["downloads"])
     print("Submission response:", response or "<empty>")
     print(f"Submitted: {selected_name}")
+    duplicate_submission = (response or "").strip().lower() == "fails."
+    if duplicate_submission:
+        print("qBittorrent reported the torrent may already exist, continuing with tracker lookup.")
 
     torrent_hash = None
     for _ in range(10):
@@ -203,7 +210,10 @@ def main() -> int:
     completed_torrent = None
     if completed_path is None:
         if not args.wait:
-            print("Submission complete. Re-run later with --wait or provide --completed-path for postprocess.")
+            if duplicate_submission:
+                print("Submission was already present in qBittorrent. Re-run with --wait to attach to the existing torrent, or provide --completed-path for postprocess.")
+            else:
+                print("Submission complete. Re-run later with --wait or provide --completed-path for postprocess.")
             return 0
         visible_torrents = client.list_torrents("all")
         if not visible_torrents:
@@ -221,6 +231,18 @@ def main() -> int:
             poll_seconds=args.poll,
             before_snapshot=before_snapshot,
         )
+        if completed_path is None:
+            if completed_torrent is not None:
+                print(
+                    "Wait timeout reached. "
+                    f"Last seen: state={completed_torrent.get('state')}, "
+                    f"progress={float(completed_torrent.get('progress') or 0):.2%}, "
+                    f"name={completed_torrent.get('name')}"
+                )
+            else:
+                print("Wait timeout reached before a matching torrent could be tracked.")
+            print("Summary: download submitted and tracking works, but completion has not happened yet.")
+            return 5
 
     print(f"Completed target: {completed_path}")
 
