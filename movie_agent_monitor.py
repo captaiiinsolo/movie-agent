@@ -45,6 +45,9 @@ def track_torrent(hash_value: str, name: str, notify_target: str, content_path: 
         'content_path': content_path or '',
         'sent': [],
         'scan_sent': False,
+        'start_sent': False,
+        'move_started_sent': False,
+        'move_completed_sent': False,
         'done': False,
     }
     save_state(state)
@@ -73,6 +76,10 @@ def monitor_once() -> int:
             progress = float(torrent.get('progress') or 0)
             state_name = torrent.get('state') or 'unknown'
             item['content_path'] = torrent.get('content_path') or item.get('content_path') or ''
+            if not item.get('start_sent'):
+                send_message(target, f'Download started: {name}')
+                item['start_sent'] = True
+                changed = True
             for threshold in THRESHOLDS:
                 if progress >= threshold / 100 and threshold not in sent:
                     send_message(target, f'{name}: {threshold}% complete ({state_name})')
@@ -92,8 +99,19 @@ def monitor_once() -> int:
                 item['scan_sent'] = True
                 changed = True
 
+        normalized_dir = Path(item.get('content_path') or '').with_suffix('')
+        if item.get('scan_sent') and not item.get('move_started_sent') and normalized_dir.exists():
+            send_message(target, f'Move starting: {normalized_dir.name}')
+            item['move_started_sent'] = True
+            changed = True
+
+        movies_match = list(Path('/mnt/th3keyMedia/Movies').glob(f"{normalized_dir.name}*")) if normalized_dir.name else []
+        if item.get('move_started_sent') and not item.get('move_completed_sent') and movies_match:
+            send_message(target, f'Move complete: {movies_match[0].name}')
+            item['move_completed_sent'] = True
+            changed = True
+
         if item.get('scan_sent'):
-            # keep record but mark inactive
             item['inactive'] = True
 
     if changed:
