@@ -411,6 +411,19 @@ def normalize_movie_folder(source: Path, keep_nfo: bool = True, remove_junk_txt:
     actions: list[str] = []
     work_root = source
 
+    if source.is_file():
+        title, year = infer_title_year(source.stem)
+        folder_name = f"{title} ({year})" if year else title
+        file_name = f"{title} ({year}){source.suffix.lower()}" if year else f"{title}{source.suffix.lower()}"
+        normalized_root = source.parent / folder_name
+        normalized_root.mkdir(exist_ok=True)
+        desired_video = normalized_root / file_name
+        if source != desired_video:
+            source.rename(desired_video)
+            actions.append(f"wrapped single file into folder {normalized_root.name}")
+            actions.append(f"renamed video to {desired_video.name}")
+        work_root = normalized_root
+
     if remove_junk_txt:
         removed = remove_junk_txt_files(work_root)
         if removed:
