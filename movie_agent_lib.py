@@ -431,6 +431,11 @@ def safe_move(source: Path, destination_parent: Path) -> tuple[Path, list[str]]:
     destination = destination_parent / source.name
 
     if destination.exists():
+        if destination.is_dir() and source.is_dir() and verify_same_tree(source, destination):
+            shutil.rmtree(source)
+            actions.append("destination already contained verified copy")
+            actions.append("removed original after verification")
+            return destination, actions
         raise RuntimeError(f"Destination already exists: {destination}")
 
     same_device = source.stat().st_dev == destination_parent.stat().st_dev
